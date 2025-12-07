@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>صانع الملصقات الاحترافي</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=Lalezar&family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Cairo', sans-serif; background: #f3f4f6; overflow: hidden; touch-action: none; }
+        
+        /* Fonts Classes */
+        .font-cairo { font-family: 'Cairo', sans-serif; }
+        .font-amiri { font-family: 'Amiri', serif; }
+        .font-aref { font-family: 'Aref Ruqaa', serif; }
+        .font-lalezar { font-family: 'Lalezar', system-ui; }
+        .font-tajawal { font-family: 'Tajawal', sans-serif; }
+        
+        /* Layout */
+        #app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* Canvas Area */
+        #workspace {
+            flex: 1;
+            background: #e5e7eb;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* Dot Pattern */
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        #scale-wrapper {
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            transition: transform 0.1s linear; /* Smooth scaling */
+        }
+
+        #canvas-container {
+            width: 1280px;
+            height: 720px;
+            position: relative;
+            background-color: #FDF3E3;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Draggable Items */
+        .draggable-item {
+            position: absolute;
+            cursor: grab;
+            user-select: none;
+            text-align: center;
+            line-height: 1.4;
+            padding: 8px; /* Bigger hit area */
+            border: 2px solid transparent;
+            white-space: pre-wrap;
+            touch-action: none; /* Prevent scrolling while dragging */
+            transform-origin: center center;
+        }
+        
+        .draggable-item:active { cursor: grabbing; }
+        .draggable-item.selected { 
+            border-color: #3b82f6; 
+            background: rgba(59, 130, 246, 0.1); 
+            z-index: 50; 
+        }
+        /* Resize handles simulation */
+        .draggable-item.selected::after {
+            content: '';
+            position: absolute;
+            bottom: -4px; right: -4px;
+            width: 8px; height: 8px;
+            background: #3b82f6;
+            border-radius: 50%;
+        }
+
+        /* Controls Panel (Responsive) */
+        #controls {
+            background: white;
+            border-top: 1px solid #d1d5db;
+            padding: 1rem;
+            height: 320px; /* Fixed height for controls on mobile/desktop */
+            overflow-y: auto;
+            z-index: 20;
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        @media (min-width: 1024px) {
+            #app-container { flex-direction: row; }
+            #controls { 
+                width: 350px; 
+                height: 100vh; 
+                border-top: none; 
+                border-left: 1px solid #d1d5db;
+            }
+        }
+
+        /* Styling inputs */
+        input[type="range"] { accent-color: #2563eb; }
+        .color-dot { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid #e5e7eb; transition: transform 0.1s; }
+        .color-dot:active { transform: scale(0.9); }
+        .color-dot.active { border-color: #2563eb; transform: scale(1.1); box-shadow: 0 0 0 2px rgba(37,99,235,0.3); }
+
+        .btn-primary {
+            background-color: #0f766e;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:active { background-color: #0d5f57; }
+    </style>
+    <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "html-to-image": "https://aistudiocdn.com/html-to-image@^1.11.13",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="app-container">
+    
+    <!-- Controls Sidebar -->
+    <div id="controls" class="flex flex-col gap-4">
+        <!-- Header Actions -->
+        <div class="flex gap-2 mb-2">
+            <button onclick="app.downloadImage()" class="btn-primary flex-1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                حفظ الصورة
+            </button>
+            <button onclick="app.aiEnhance()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 transition flex items-center justify-center gap-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                AI
+            </button>
+        </div>
+
+        <div class="h-px bg-gray-200"></div>
+
+        <!-- Layer Selector -->
+        <div>
+            <label class="text-xs font-bold text-gray-500 mb-2 block">اختر العنصر للتعديل</label>
+            <div id="layer-buttons" class="grid grid-cols-2 gap-2"></div>
+        </div>
+
+        <!-- Editor -->
+        <div id="editor-panel" class="bg-gray-50 p-3 rounded-xl border border-gray-200 flex flex-col gap-3">
+            
+            <!-- Dynamic Input: Textarea OR Select -->
+            <div id="text-input-container">
+                <label class="text-xs font-bold text-gray-500 mb-1 block">النص</label>
+                <!-- Injected via JS -->
+            </div>
+
+            <!-- Font & Size Row -->
+            <div class="flex gap-2">
+                <div class="flex-1">
+                    <label class="text-xs font-bold text-gray-500 mb-1 block">الخط</label>
+                    <select id="input-font" class="w-full p-2 border rounded-lg text-sm bg-white h-10">
+                        <option value="Cairo">القاهرة</option>
+                        <option value="Amiri">أميري</option>
+                        <option value="Aref Ruqaa">الرقعة</option>
+                        <option value="Lalezar">عريض</option>
+                        <option value="Tajawal">تجوال</option>
+                    </select>
+                </div>
+                <div class="flex-1">
+                    <div class="flex justify-between text-xs text-gray-500 mb-1">
+                        <span class="font-bold">الحجم</span>
+                        <span id="size-display">0</span>
+                    </div>
+                    <input type="range" id="input-size" min="20" max="200" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Color Palette -->
+            <div>
+                <label class="text-xs font-bold text-gray-500 mb-2 block">اللون</label>
+                <div id="color-palette" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- Background -->
+        <div>
+            <label class="text-xs font-bold text-gray-500 mb-2 block">الخلفية</label>
+            <div class="flex items-center gap-2">
+                <label class="flex-1 cursor-pointer bg-white border border-dashed border-gray-300 rounded-lg p-2 text-center hover:bg-gray-50 transition">
+                    <span class="text-sm text-gray-600">📂 رفع صورة</span>
+                    <input type="file" id="bg-upload" accept="image/*" class="hidden">
+                </label>
+                <button onclick="app.resetBackground()" class="text-red-500 p-2 hover:bg-red-50 rounded" title="حذف الخلفية">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workspace -->
+    <div id="workspace">
+        <div id="scale-wrapper">
+            <div id="canvas-container">
+                <!-- Background Layer -->
+                <div id="canvas-bg" class="absolute inset-0 w-full h-full pointer-events-none">
+                    <div id="default-bg" class="w-full h-full relative bg-[#FDF3E3]">
+                        <div class="absolute top-0 left-0 w-full h-4 bg-[#8B1E1E]"></div>
+                        <div class="absolute bottom-0 left-0 w-full h-4 bg-[#8B1E1E]"></div>
+                        <div class="absolute top-0 left-0 w-32 h-32 border-r-4 border-b-4 border-[#8B1E1E] rounded-br-[4rem] opacity-20"></div>
+                        <div class="absolute top-0 right-0 w-32 h-32 border-l-4 border-b-4 border-[#8B1E1E] rounded-bl-[4rem] opacity-20"></div>
+                        <div class="absolute top-1/4 left-10 w-24 h-24 border border-[#004d40] opacity-10 rounded-full"></div>
+                        <div class="absolute bottom-1/4 right-10 w-16 h-16 border border-[#004d40] opacity-10 rounded-full"></div>
+                    </div>
+                    <img id="custom-bg" class="w-full h-full object-cover hidden" alt="">
+                </div>
+                
+                <!-- Elements Layer -->
+                <div id="canvas-elements" class="absolute inset-0 w-full h-full"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { toPng } from 'html-to-image';
+    import { GoogleGenAI } from '@google/genai';
+
+    const DEFAULT_STATE = {
+        date: { label: 'التاريخ', text: 'الخميس 07 أوت 2025', x: 400, y: 120, fontSize: 48, fontFamily: 'Cairo', color: '#004d40' },
+        honorific: { label: 'اللقب', text: 'الدكتور', x: 550, y: 220, fontSize: 36, fontFamily: 'Amiri', color: '#004d40', type: 'select', options: ['الدكتور', 'الأستاذ', 'الشيخ'] },
+        name: { label: 'الاسم', text: 'عبد الرحمان بن إبراهيم نجار', x: 400, y: 270, fontSize: 60, fontFamily: 'Amiri', color: '#1a1a1a' },
+        title: { label: 'العنوان', text: 'من التماسك الاجتماعي إلى التقدم الحضاري\nقراءة في مفهوم رأس المال الاجتماعي', x: 165, y: 380, fontSize: 72, fontFamily: 'Lalezar', color: '#b71c1c', width: 950 }
+    };
+
+    const COLORS = ['#1a1a1a', '#b71c1c', '#004d40', '#1e40af', '#ffffff', '#eab308'];
+
+    class App {
+        constructor() {
+            this.state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+            this.selectedId = 'title';
+            this.currentScale = 1;
+            
+            // Drag State
+            this.isDragging = false;
+            this.dragStartMouse = { x: 0, y: 0 };
+            this.dragStartEl = { x: 0, y: 0 };
+
+            this.init();
+        }
+
+        init() {
+            this.renderLayerButtons();
+            this.renderColors();
+            this.setupEvents();
+            this.renderCanvas();
+            this.updateEditorUI();
+            this.fitCanvas();
+
+            // Handle Resize
+            window.addEventListener('resize', () => this.fitCanvas());
+        }
+
+        fitCanvas() {
+            const workspace = document.getElementById('workspace');
+            const wrapper = document.getElementById('scale-wrapper');
+            // Available space minus padding
+            const wAvailable = workspace.clientWidth - 20;
+            const hAvailable = workspace.clientHeight - 20;
+            
+            const scaleX = wAvailable / 1280;
+            const scaleY = hAvailable / 720;
+            this.currentScale = Math.min(scaleX, scaleY, 1); // Max scale 1
+            
+            wrapper.style.transform = `scale(${this.currentScale})`;
+            wrapper.style.width = '1280px';
+            wrapper.style.height = '720px';
+        }
+
+        renderLayerButtons() {
+            const container = document.getElementById('layer-buttons');
+            container.innerHTML = '';
+            Object.entries(this.state).forEach(([key, el]) => {
+                const btn = document.createElement('button');
+                btn.className = `p-2 rounded-lg text-sm font-bold border transition ${this.selectedId === key ? 'bg-blue-600 text-white border-blue-700 shadow' : 'bg-white text-gray-600 border-gray-200'}`;
+                btn.innerText = el.label;
+                btn.onclick = () => this.selectElement(key);
+                container.appendChild(btn);
+            });
+        }
+
+        renderColors() {
+            const container = document.getElementById('color-palette');
+            COLORS.forEach(color => {
+                const dot = document.createElement('div');
+                dot.className = 'color-dot';
+                dot.style.backgroundColor = color;
+                dot.onclick = () => this.updateProperty('color', color);
+                container.appendChild(dot);
+            });
+        }
+
+        renderCanvas() {
+            const container = document.getElementById('canvas-elements');
+            container.innerHTML = ''; 
+
+            Object.entries(this.state).forEach(([key, el]) => {
+                const div = document.createElement('div');
+                div.id = `el-${key}`;
+                div.className = `draggable-item ${this.selectedId === key ? 'selected' : ''}`;
+                
+                // Style
+                div.style.left = `${el.x}px`;
+                div.style.top = `${el.y}px`;
+                div.style.fontSize = `${el.fontSize}px`;
+                div.style.fontFamily = this.getFontFamily(el.fontFamily);
+                div.style.color = el.color;
+                if (el.width) div.style.maxWidth = `${el.width}px`;
+                
+                div.innerText = el.text;
+
+                // Event Listeners for Dragging (Mouse & Touch)
+                const startDrag = (e) => this.handleDragStart(e, key);
+                div.addEventListener('mousedown', startDrag);
+                div.addEventListener('touchstart', startDrag, { passive: false });
+
+                container.appendChild(div);
+            });
+        }
+
+        getFontFamily(fontName) {
+            const map = {
+                'Cairo': '"Cairo", sans-serif',
+                'Amiri': '"Amiri", serif',
+                'Aref Ruqaa': '"Aref Ruqaa", serif',
+                'Lalezar': '"Lalezar", cursive',
+                'Tajawal': '"Tajawal", sans-serif'
+            };
+            return map[fontName] || 'sans-serif';
+        }
+
+        selectElement(id) {
+            this.selectedId = id;
+            this.renderCanvas(); // Redraw selection box
+            this.renderLayerButtons(); // Update active button
+            this.updateEditorUI();
+        }
+
+        updateEditorUI() {
+            const el = this.state[this.selectedId];
+            if (!el) return;
+
+            // 1. Text Input Logic (Textarea vs Select)
+            const inputContainer = document.getElementById('text-input-container');
+            inputContainer.innerHTML = '<label class="text-xs font-bold text-gray-500 mb-1 block">النص</label>';
+            
+            if (el.type === 'select') {
+                const select = document.createElement('select');
+                select.className = 'w-full p-2 border rounded-lg text-sm bg-white h-10';
+                el.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt;
+                    option.innerText = opt;
+                    if (opt === el.text) option.selected = true;
+                    select.appendChild(option);
+                });
+                select.onchange = (e) => this.updateProperty('text', e.target.value);
+                inputContainer.appendChild(select);
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.className = 'w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500';
+                textarea.rows = 2;
+                textarea.value = el.text;
+                textarea.oninput = (e) => this.updateProperty('text', e.target.value);
+                inputContainer.appendChild(textarea);
+            }
+
+            // 2. Other properties
+            document.getElementById('input-font').value = el.fontFamily;
+            document.getElementById('input-size').value = el.fontSize;
+            document.getElementById('size-display').innerText = el.fontSize;
+
+            // 3. Color Active State
+            const dots = document.querySelectorAll('.color-dot');
+            dots.forEach(dot => {
+                dot.classList.remove('active');
+                if (dot.style.backgroundColor === el.color) dot.classList.add('active'); // Basic hex check
+                // Convert rgb to hex for robust check if needed, but simple usually works for preset palette
+            });
+        }
+
+        updateProperty(prop, value) {
+            if (!this.selectedId) return;
+            this.state[this.selectedId][prop] = value;
+            
+            // Optimization: Update DOM directly for smoother text typing
+            if (prop === 'text') {
+                document.getElementById(`el-${this.selectedId}`).innerText = value;
+            } else {
+                this.renderCanvas();
+            }
+            
+            if (prop === 'fontSize') document.getElementById('size-display').innerText = value;
+        }
+
+        // --- Dragging Logic ---
+
+        handleDragStart(e, id) {
+            // Prevent default to stop scrolling on mobile
+            if (e.cancelable) e.preventDefault();
+            e.stopPropagation();
+
+            this.selectElement(id);
+            this.isDragging = true;
+            
+            // Get pointer position (Touch or Mouse)
+            const point = e.touches ? e.touches[0] : e;
+            
+            this.dragStartMouse = { x: point.clientX, y: point.clientY };
+            this.dragStartEl = { 
+                x: this.state[id].x, 
+                y: this.state[id].y 
+            };
+        }
+
+        handleDragMove(e) {
+            if (!this.isDragging || !this.selectedId) return;
+            if (e.cancelable) e.preventDefault();
+
+            const point = e.touches ? e.touches[0] : e;
+            
+            // Calculate delta in screen pixels
+            const dx = point.clientX - this.dragStartMouse.x;
+            const dy = point.clientY - this.dragStartMouse.y;
+
+            // Convert delta to canvas coordinate space by dividing by scale
+            // CRITICAL FIX: This makes the element stick to the finger
+            const canvasDx = dx / this.currentScale;
+            const canvasDy = dy / this.currentScale;
+
+            const newX = this.dragStartEl.x + canvasDx;
+            const newY = this.dragStartEl.y + canvasDy;
+
+            // Update State
+            this.state[this.selectedId].x = newX;
+            this.state[this.selectedId].y = newY;
+
+            // Update DOM directly for performance
+            const elDiv = document.getElementById(`el-${this.selectedId}`);
+            if (elDiv) {
+                elDiv.style.left = `${newX}px`;
+                elDiv.style.top = `${newY}px`;
+            }
+        }
+
+        handleDragEnd() {
+            this.isDragging = false;
+        }
+
+        setupEvents() {
+            // Global Move/Up events to handle dragging even if pointer leaves element
+            window.addEventListener('mousemove', (e) => this.handleDragMove(e));
+            window.addEventListener('mouseup', () => this.handleDragEnd());
+            
+            // Touch Events
+            window.addEventListener('touchmove', (e) => this.handleDragMove(e), { passive: false });
+            window.addEventListener('touchend', () => this.handleDragEnd());
+
+            // Inputs
+            document.getElementById('input-font').onchange = (e) => this.updateProperty('fontFamily', e.target.value);
+            document.getElementById('input-size').oninput = (e) => this.updateProperty('fontSize', parseInt(e.target.value));
+
+            // Background
+            document.getElementById('bg-upload').onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        document.getElementById('default-bg').classList.add('hidden');
+                        const img = document.getElementById('custom-bg');
+                        img.src = evt.target.result;
+                        img.classList.remove('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+        }
+
+        resetBackground() {
+            document.getElementById('bg-upload').value = '';
+            document.getElementById('custom-bg').classList.add('hidden');
+            document.getElementById('default-bg').classList.remove('hidden');
+        }
+
+        async downloadImage() {
+            const node = document.getElementById('canvas-container');
+            // Hide selection border
+            const prevId = this.selectedId;
+            this.selectedId = null;
+            this.renderCanvas();
+
+            // Small delay to allow render
+            setTimeout(async () => {
+                try {
+                    const dataUrl = await toPng(node, { pixelRatio: 2 });
+                    const link = document.createElement('a');
+                    link.download = 'mohadara-design.png';
+                    link.href = dataUrl;
+                    link.click();
+                } catch (err) {
+                    console.error(err);
+                    alert('حدث خطأ. جرب متصفحاً حديثاً.');
+                } finally {
+                    this.selectedId = prevId;
+                    this.renderCanvas();
+                }
+            }, 50);
+        }
+
+        async aiEnhance() {
+            const btn = document.querySelector('button[onclick="app.aiEnhance()"]');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '...';
+            btn.disabled = true;
+
+            try {
+                const apiKey = process.env.API_KEY;
+                if (!apiKey) throw new Error("مفتاح API غير متوفر");
+
+                const ai = new GoogleGenAI({ apiKey });
+                const prompt = `
+                Role: Arabic Editor.
+                Tasks:
+                1. Format date: "${this.state.date.text}" -> Formal Arabic (e.g. "الخميس 10 رمضان...").
+                2. Fix Title Grammar: "${this.state.title.text}".
+                Return JSON: {"date": "...", "title": "..."}
+                `;
+
+                const result = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: prompt,
+                    config: { responseMimeType: 'application/json' }
+                });
+
+                const json = JSON.parse(result.text);
+                this.state.date.text = json.date;
+                this.state.title.text = json.title;
+                this.updateEditorUI();
+                this.renderCanvas();
+
+            } catch (err) {
+                alert('فشل الاتصال بالذكاء الاصطناعي');
+                console.error(err);
+            } finally {
+                btn.innerHTML = originalHTML;
+                btn.disabled = false;
+            }
+        }
+    }
+
+    // Initialize
+    window.app = new App();
+</script>
+</body>
+</html>
